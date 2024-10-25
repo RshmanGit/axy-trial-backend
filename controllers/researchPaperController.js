@@ -1,22 +1,36 @@
 // controllers/researchPaperController.js
 
 import prisma from "../prismaClient.js";
+import { z } from "https://deno.land/x/zod@v3.21.4/mod.ts";
 
 // Function to create a new research paper
 export const createResearchPaper = async (context) => {
   try {
     const body = await context.request.body().value; // Get the request body
 
-    const { authorName, paperName, description } = body;
+    // Define a Zod schema for the request body
+    const paperSchema = z.object({
+      authorName: z
+        .string()
+        .min(1, { message: "Author name is required" })
+        .refine((val) => !/<\/?[a-z][\s\S]*>/i.test(val), {
+          message: "Invalid characters",
+        }),
+      paperName: z
+        .string()
+        .min(1, { message: "Paper name is required" })
+        .refine((val) => !/<\/?[a-z][\s\S]*>/i.test(val), {
+          message: "Invalid characters",
+        }),
+      description: z
+        .string()
+        .min(1, { message: "Description is required" })
+        .refine((val) => !/<\/?[a-z][\s\S]*>/i.test(val), {
+          message: "Invalid characters",
+        }),
+    });
 
-    // Validate required fields
-    if (!authorName || !paperName || !description) {
-      context.response.status = 400; // Bad Request
-      context.response.body = {
-        error: "Author name, Paper name, and description are required",
-      };
-      return;
-    }
+    const { authorName, paperName, description } = paperSchema.parse(body);
 
     // Create a new research paper in the database
     const newPaper = await prisma.researchPaper.create({
@@ -31,7 +45,15 @@ export const createResearchPaper = async (context) => {
     context.response.body = newPaper; // Return the created paper
   } catch (error) {
     console.error(error);
-    context.response.status = 500; // Internal Server Error
+    if (error instanceof z.ZodError) {
+      context.response.status = 422; // Unprocessable Entity
+      context.response.body = {
+        error: error.errors.map((e) => e.message).join(", "),
+      };
+    } else {
+      context.response.status = 500; // Internal Server Error
+      context.response.body = { error: "Error creating research paper" };
+    }
     context.response.body = { error: "Error creating research paper" };
   }
 };
