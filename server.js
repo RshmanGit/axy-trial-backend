@@ -1,35 +1,50 @@
 import { config } from "https://deno.land/x/dotenv/mod.ts";
-import { Application } from "https://deno.land/x/oak@v11.1.0/mod.ts";
-import { v1ResearchPaperRoutes } from "./routes/v1/researchPaper.js";
+import { Application, Router } from "https://deno.land/x/oak@v11.1.0/mod.ts";
 import { Server } from "https://deno.land/x/socket_io@0.1.1/mod.ts";
 import { serve } from "https://deno.land/std/http/server.ts";
-
-import { updateComment, updateCounter, updateViews } from "./controllers/v1/researchPaper.js";
+import {
+  updateComment,
+  updateCounter,
+  updateViews,
+} from "./controllers/v1/researchPaper.js";
+import { v1ResearchPaperRoutes } from "./routes/v1/researchPaper.js";
 
 config();
 
-const app = new Application();
 const port = 8000;
+const app = new Application();
+const router = new Router();
+const io = new Server();
 
 // CORS middleware for Oak
 app.use(async (context, next) => {
   context.response.headers.set("Access-Control-Allow-Origin", "*");
-  context.response.headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  context.response.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  context.response.headers.set(
+    "Access-Control-Allow-Methods",
+    "GET, POST, OPTIONS"
+  );
+  context.response.headers.set(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization"
+  );
   await next();
 });
 
-// Use the research paper routes
-app.use(v1ResearchPaperRoutes.prefix("/api/v1").routes());
-app.use(v1ResearchPaperRoutes.allowedMethods());
+// Define research paper routes
+router.use(
+  "/api/v1",
+  v1ResearchPaperRoutes.routes(),
+  v1ResearchPaperRoutes.allowedMethods()
+);
+app.use(router.routes());
+app.use(router.allowedMethods());
 
 // Define a simple root route
 app.use((context) => {
-  context.response.body = { message: "You are hitting the wrong url" };
+  context.response.body = { message: "You are hitting the wrong URL" };
 });
 
-// Initialize Socket.IO server
-const io = new Server();
+// Socket.IO event listeners
 io.on("connection", (socket) => {
   console.log(`socket ${socket.id} connected`);
 
@@ -74,12 +89,18 @@ io.on("connection", (socket) => {
   });
 });
 
-// Start the server and attach Socket.IO to it
+// Start both Oak and Socket.IO on the same HTTP server
 const startServer = async () => {
   try {
-    console.log(`Server is running on port ${port}`);
-    await serve(`:${port}`, app.handle.bind(app));
-    io.attach(app); // Attach Socket.IO to Oak
+     // Start Oak server
+     const oakServer = app.listen({ port });
+     console.log(`HTTP server running on http://localhost:${port}`);
+ 
+     // Start Socket.IO server
+     const socketServer = serve(io.handler(), { port: 5000 });
+ 
+     // Wait for both servers to be ready
+     await Promise.all([oakServer, socketServer]);
   } catch (err) {
     console.error("Error starting server:", err);
     Deno.exit(1);
