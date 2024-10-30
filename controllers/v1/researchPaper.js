@@ -19,7 +19,9 @@ export const getResearchPapers = async (context) => {
 // Function to create a new research paper
 export const createResearchPaper = async (context) => {
   try {
-    const body = await context.request.body().value; // Get the request body
+    
+    const body = await context.request.body().value; 
+    console.log(body);// Get the request body
 
     // Define a Zod schema for the request body
     const paperSchema = z.object({
