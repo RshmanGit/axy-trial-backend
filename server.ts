@@ -6,7 +6,7 @@ import http from "http";
 import { Server } from "socket.io";
 const prisma = new PrismaClient();
 const app = express();
-const server = http.createServer(app); // Create an HTTP server
+const server = http.createServer(app);
 const io = new Server(server,{
   cors: {
     origin: 'http://localhost:3000',
@@ -17,8 +17,23 @@ app.use(express.json());
 app.use(cors({ origin: "http://localhost:3000" }));
 app.get("/api/v1/paper", async (req: Request, res: Response) => {
   try {
-    const papers = await prisma.researchPaper.findMany();
-    papers.sort((a, b) => (2 * b.likes - b.dislikes) - (2 * a.likes - a.dislikes));
+    const papers = await prisma.researchPaper.findMany({
+      include: {
+        _count: {
+          select: { comments: true },
+        },
+      },
+    });
+    papers.sort((a: any, b: any) => {
+      const aCommentsCount = a._count.comments || 0;
+      const aScore = a.likes - a.dislikes + aCommentsCount; 
+      const bCommentsCount = b._count.comments || 0; 
+      const bScore = b.likes - b.dislikes + bCommentsCount;
+      
+      // Sort in descending order
+      return bScore - aScore; 
+    });
+
     res.status(200).json(papers);
   } catch (error) {
     console.error(error);
@@ -69,11 +84,56 @@ app.post("/api/v1/paper", async (req: Request, res: Response) => {
     }
   }
 });
+app.post("/api/v1/paper/:paperId/comment", async (req: Request, res: Response) => {
+  try {
+    const paperId = req.params.paperId; 
+    const body = req.body;
+    const commentSchema = z.object({
+      name: z.string().min(1, { message: "Name is required" }),
+      content: z.string().min(1, { message: "Comment content is required" }),
+    });
+    const { name, content } = commentSchema.parse(body);
+    const newComment = await prisma.about.create({
+      data: {
+        name,
+        content,
+        paper: {
+          connect: { id: paperId },
+        },
+      },
+    });
+    io.emit("commentCreated", newComment);
+    res.status(201).json(newComment);
+  } catch (error) {
+    console.error(error);
+    if (error instanceof z.ZodError) {
+      res.status(422).json({
+        error: error.errors.map((e) => e.message).join(", "),
+      });
+    } else {
+      res.status(500).json({ error: "Error creating comment" });
+    }
+  }
+});
+app.get("/api/v1/paper/:paperId/comment", async (req: Request, res: Response) => {
+  try{
+  const paperId: string = req.params.paperId; 
+  const comments = await prisma.about.findMany({
+    where: {
+      paperId: paperId,
+    },
+  });
+  res.status(200).json(comments);
+  }
+  catch(error){
+    console.error(error);
+    res.status(500).json({ error: "Error fetching comments" });
+  }
+});
+
 io.on("connection", (socket) => {
   console.log(`Client connected: ${socket.id}`);
   socket.on("likePaper", async (paperId: string) => {
-    // console.log("hiiiiii");
-    // console.log(paperId);
     try {
       const updatedPaper = await prisma.researchPaper.update({
         where: {
