@@ -1,0 +1,24 @@
+// This is your Prisma schema file
+// Learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["deno"]
+  output          = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL_CLOUD_DB")
+}
+
+model researchPaper {
+  id          String   @id @default(uuid())
+  authorName  String
+  paperName   String
+  description String   @db.Text
+  comments    String[]
+  likes       Int      @default(0)
+  dislikes    Int      @default(0)
+  views       Int      @default(0)
+}
